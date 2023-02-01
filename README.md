@@ -1,4 +1,4 @@
-# Readme
+# About
 
 Downloads an album from [Video Game Music](https://downloads.khinsider.com). Only downloads tracks in *.flac or *.wav format and doesn't fallback to *.mp3. Downloads happen one by one to avoid overloading the server.
 
@@ -26,4 +26,4 @@ Run:
 node index.js
 ```
 
-Downloads will be saved in the `/downloads` folder.
+Downloads will be saved to the `/downloads` folder.
