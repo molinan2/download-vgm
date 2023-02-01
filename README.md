@@ -1,6 +1,6 @@
 # Readme
 
-Downloads an album from https://downloads.khinsider.com. Only downloads tracks in *.flac or *.wav format and doesn't fallback to *.mp3. 
+Downloads an album from https://downloads.khinsider.com. Only downloads tracks in *.flac or *.wav format and doesn't fallback to *.mp3. Downloads happen one by one to avoid overloading the served (please be respectful).
 
 # Usage
 
