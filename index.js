@@ -4,8 +4,10 @@ const puppeteer = require('puppeteer');
 const download = require('download');
 const chalk = require('chalk');
 
+const config = require('./config/config.json');
+
 (async function() {
-    const rootUrl = 'https://downloads.khinsider.com/game-soundtracks/album/legend-of-zelda-the-ocarina-of-time-1998-n64';
+    const rootUrl = config.rootUrl;
     const gameName = rootUrl.split('/').pop();
     console.log('Game:', chalk.green(gameName));
     const browser = await puppeteer.launch();
