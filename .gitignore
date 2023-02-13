@@ -5,3 +5,4 @@ downloads/*
 config/*json
 !config/config.example.json
 .idea
+.DS_Store
