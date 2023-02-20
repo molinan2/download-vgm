@@ -16,7 +16,8 @@ Create or edit the file at `config/config.json` and add the `rootUrl` for the al
 
 ```json
 {
-  "rootUrl": "https://downloads.khinsider.com/game-soundtracks/album/some-album"
+  "rootUrl": "https://downloads.khinsider.com/game-soundtracks/album/some-album",
+  "allowMp3": false
 }
 ```
 
