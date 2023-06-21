@@ -59,8 +59,9 @@ const config = require('./config/config.json');
             const audios = hrefs.filter(e => {
                 const wav = e.endsWith('wav');
                 const flac = e.endsWith('flac');
+                const m4a = e.endsWith('m4a');
                 const mp3 = e.endsWith('mp3') && !!allowMp3;
-                return wav || flac || mp3;
+                return wav || flac || m4a || mp3;
             });
             links.push(...audios);
             fs.writeFileSync('./data/downloadLinks.json', JSON.stringify(links, null, 4));
