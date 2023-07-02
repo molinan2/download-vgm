@@ -9,11 +9,14 @@ const config = require('./config/config.json');
 (async function() {
     const { rootUrl, allowMp3 } = config;
     const gameName = rootUrl.split('/').pop();
+    const downloadPath = `./downloads/${gameName}`;
+    fs.mkdirSync(downloadPath, { recursive: true });
     console.log('Game:', chalk.green(gameName));
+
     const browser = await puppeteer.launch();
     const urls = await getTrackURLs(rootUrl);
     const links = await getDownloadLinks(urls, allowMp3);
-    await downloadLinks(links);
+    await downloadLinks(links, downloadPath);
     await browser.close();
 
     /**
@@ -76,12 +79,13 @@ const config = require('./config/config.json');
 
     /**
      * @param {[string]} links
+     * @param {string} downloadPath
      */
-    async function downloadLinks(links) {
+    async function downloadLinks(links, downloadPath='.') {
         for (const link of links) {
             const filename = extractFilename(link);
             console.log('Downloading:', chalk.grey(filename));
-            fs.writeFileSync(`./downloads/${filename}`, await download(link));
+            fs.writeFileSync(`${downloadPath}/${filename}`, await download(link));
         }
 
         function extractFilename(link) {

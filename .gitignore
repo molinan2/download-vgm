@@ -1,6 +1,8 @@
 node_modules
 data/*json
 downloads/*
+downloads/**
+downloads/**/*
 !downloads/.downloads
 config/*json
 !config/config.example.json
