@@ -1,6 +1,6 @@
 # About
 
-Downloads an album from [Video Game Music](https://downloads.khinsider.com). Only downloads tracks in *.flac or *.wav format and doesn't fallback to *.mp3. Downloads happen one by one to avoid overloading the server.
+Downloads an album from [Video Game Music](https://downloads.khinsider.com). Only downloads tracks in *.flac or *.wav format and doesn't fall back to *.mp3. Downloads happen one by one to avoid overloading the server.
 
 # Usage
 
@@ -12,12 +12,12 @@ Install packages:
 npm i
 ```
 
-Create or edit the file at `config/config.json` and add the `rootUrl` for the album you want to download:
+Create or edit the file at `config/config.json`. Add the `rootUrl` for the album you want to download and the `allowedExtensions` for the audio file types you want:
 
 ```json
 {
   "rootUrl": "https://downloads.khinsider.com/game-soundtracks/album/some-album",
-  "allowLQ": false
+  "allowedExtensions": [ "flac" ]
 }
 ```
 

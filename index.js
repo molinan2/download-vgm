@@ -7,7 +7,7 @@ const chalk = require('chalk');
 const config = require('./config/config.json');
 
 (async function() {
-    const { rootUrl, allowLQ } = config;
+    const { rootUrl, allowedExtensions } = config;
     const gameName = rootUrl.split('/').pop();
     const downloadPath = `./downloads/${gameName}`;
     fs.mkdirSync(downloadPath, { recursive: true });
@@ -15,7 +15,7 @@ const config = require('./config/config.json');
 
     const browser = await puppeteer.launch();
     const urls = await getTrackURLs(rootUrl);
-    const links = await getDownloadLinks(urls, allowLQ);
+    const links = await getDownloadLinks(urls, allowedExtensions);
     await downloadLinks(links, downloadPath);
     await browser.close();
 
@@ -48,9 +48,9 @@ const config = require('./config/config.json');
 
     /**
      * @param {[string]} trackUrls
-     * @param {boolean} allowLQ
+     * @param {[string]} allowedExtensions
      */
-    async function getDownloadLinks(trackUrls, allowLQ=true) {
+    async function getDownloadLinks(trackUrls, allowedExtensions=['flac']) {
         const links = [];
 
         for (const url of trackUrls) {
@@ -60,12 +60,11 @@ const config = require('./config/config.json');
             const content = await page.$('#pageContent');
             const hrefs = await content.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
             const audios = hrefs.filter(e => {
-                const wav = e.endsWith('wav');
-                const flac = e.endsWith('flac');
-                const m4a = e.endsWith('m4a') && !!allowLQ;
-                const ogg = e.endsWith('ogg') && !!allowLQ;
-                const mp3 = e.endsWith('mp3') && !!allowLQ;
-                return wav || flac || m4a || ogg || mp3;
+                for (const extension of allowedExtensions) {
+                    if (e.endsWith(extension)) return true;
+                }
+
+                return false;
             });
             links.push(...audios);
             fs.writeFileSync('./data/downloadLinks.json', JSON.stringify(links, null, 4));

@@ -1,4 +1,4 @@
 {
   "rootUrl": "https://downloads.khinsider.com/game-soundtracks/album/some-album",
-  "allowLQ": false
+  "allowedExtensions": [ "flac" ]
 }
