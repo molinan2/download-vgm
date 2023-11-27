@@ -7,7 +7,7 @@ const chalk = require('chalk');
 const config = require('./config/config.json');
 
 (async function() {
-    const { rootUrl, allowMp3 } = config;
+    const { rootUrl, allowLQ } = config;
     const gameName = rootUrl.split('/').pop();
     const downloadPath = `./downloads/${gameName}`;
     fs.mkdirSync(downloadPath, { recursive: true });
@@ -15,7 +15,7 @@ const config = require('./config/config.json');
 
     const browser = await puppeteer.launch();
     const urls = await getTrackURLs(rootUrl);
-    const links = await getDownloadLinks(urls, allowMp3);
+    const links = await getDownloadLinks(urls, allowLQ);
     await downloadLinks(links, downloadPath);
     await browser.close();
 
@@ -48,9 +48,9 @@ const config = require('./config/config.json');
 
     /**
      * @param {[string]} trackUrls
-     * @param {boolean} allowMp3
+     * @param {boolean} allowLQ
      */
-    async function getDownloadLinks(trackUrls, allowMp3=true) {
+    async function getDownloadLinks(trackUrls, allowLQ=true) {
         const links = [];
 
         for (const url of trackUrls) {
@@ -62,9 +62,10 @@ const config = require('./config/config.json');
             const audios = hrefs.filter(e => {
                 const wav = e.endsWith('wav');
                 const flac = e.endsWith('flac');
-                const m4a = e.endsWith('m4a');
-                const mp3 = e.endsWith('mp3') && !!allowMp3;
-                return wav || flac || m4a || mp3;
+                const m4a = e.endsWith('m4a') && !!allowLQ;
+                const ogg = e.endsWith('ogg') && !!allowLQ;
+                const mp3 = e.endsWith('mp3') && !!allowLQ;
+                return wav || flac || m4a || ogg || mp3;
             });
             links.push(...audios);
             fs.writeFileSync('./data/downloadLinks.json', JSON.stringify(links, null, 4));
