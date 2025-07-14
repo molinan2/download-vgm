@@ -10,10 +10,10 @@ const args = minimist(process.argv);
 
 (async function() {
     const { url, extensions } = getParams(args, config);
-    const gameName = url.split('/').pop();
-    const downloadPath = `./downloads/${gameName}`;
+    const game = url.split('/').pop();
+    const downloadPath = `./downloads/${game}`;
     fs.mkdirSync(downloadPath, { recursive: true });
-    console.log('Game:', chalk.green(gameName));
+    console.log('Game:', chalk.green(game));
 
     const browser = await puppeteer.launch({ headless: 'new' });
     const trackUrls = await getTrackURLs(url);
@@ -42,7 +42,7 @@ const args = minimist(process.argv);
         }
 
         console.log('Track URLs:', trackUrls.length);
-        fs.writeFileSync('./data/trackUrls.json', JSON.stringify(trackUrls, null, 4));
+        fs.writeFileSync(`./data/${game}_track-urls.json`, JSON.stringify(trackUrls, null, 4));
         await rootPage.close();
 
         return trackUrls;
@@ -52,7 +52,7 @@ const args = minimist(process.argv);
      * @param {[string]} trackUrls
      * @param {[string]} extensions
      */
-    async function getDownloadLinks(trackUrls, extensions=['flac']) {
+    async function getDownloadLinks(trackUrls, extensions=[]) {
         const links = [];
 
         for (const url of trackUrls) {
@@ -61,20 +61,33 @@ const args = minimist(process.argv);
             await page.goto(url);
             const content = await page.$('#pageContent');
             const hrefs = await content.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
-            const audios = hrefs.filter(e => {
-                for (const extension of extensions) {
-                    if (e.endsWith(extension)) return true;
-                }
 
-                return false;
+            const containsFlac = !!(hrefs.find(e => e.toLowerCase().endsWith('flac')));
+            const containsMp3 = !!(hrefs.find(e => e.toLowerCase().endsWith('mp3')));
+            const containsOgg = !!(hrefs.find(e => e.toLowerCase().endsWith('ogg')));
+            
+            const audios = hrefs.filter(e => {
+                if (extensions.length > 0) {
+                    for (const extension of extensions) {
+                        if (e.endsWith(extension)) return true;
+                    }
+                    return false;
+                }
+                else {
+                    // Assumes the whole album is complete with every single extension (sometimes not true)
+                    if (containsFlac) return e.toLowerCase().endsWith('flac');
+                    else if (containsMp3) return e.toLowerCase().endsWith('mp3');
+                    else if (containsOgg) return e.toLowerCase().endsWith('ogg');
+                    else return false;
+                }
             });
             links.push(...audios);
-            fs.writeFileSync('./data/downloadLinks.json', JSON.stringify(links, null, 4));
+            fs.writeFileSync(`./data/${game}_download-links.json`, JSON.stringify(links, null, 4));
             await page.close();
         }
 
         console.log('Download links:', links.length);
-        fs.writeFileSync('./data/downloadLinks.json', JSON.stringify(links, null, 4));
+        fs.writeFileSync(`./data/${game}_download-links.json`, JSON.stringify(links, null, 4));
 
         return links;
     }
@@ -107,10 +120,12 @@ const args = minimist(process.argv);
      * @returns {*}
      */
     function getParams(args, config) {
-        if (args.url && args.extensions) {
+        if (args.url) {
+            const extensions = args.extensions ? (Array.isArray(args.extensions) ? args.extensions : [args.extensions]) : [];
+
             return {
                 url: args.url,
-                extensions: Array.isArray(args.extensions) ? args.extensions : [args.extensions],
+                extensions: extensions,
             }
         }
 
