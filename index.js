@@ -3,29 +3,31 @@ const fs = require('fs');
 const puppeteer = require('puppeteer');
 const download = require('download');
 const chalk = require('chalk');
+const minimist = require('minimist');
 
 const config = require('./config/config.json');
+const args = minimist(process.argv);
 
 (async function() {
-    const { rootUrl, allowedExtensions } = config;
-    const gameName = rootUrl.split('/').pop();
+    const { url, extensions } = getParams(args, config);
+    const gameName = url.split('/').pop();
     const downloadPath = `./downloads/${gameName}`;
     fs.mkdirSync(downloadPath, { recursive: true });
     console.log('Game:', chalk.green(gameName));
 
-    const browser = await puppeteer.launch();
-    const urls = await getTrackURLs(rootUrl);
-    const links = await getDownloadLinks(urls, allowedExtensions);
+    const browser = await puppeteer.launch({ headless: 'new' });
+    const trackUrls = await getTrackURLs(url);
+    const links = await getDownloadLinks(trackUrls, extensions);
     await downloadLinks(links, downloadPath);
     await browser.close();
 
     /**
-     * @param {string} rootUrl
+     * @param {string} url
      */
-    async function getTrackURLs(rootUrl) {
+    async function getTrackURLs(url) {
         const rootPage = await browser.newPage();
-        await rootPage.goto(rootUrl);
-        const urls = [];
+        await rootPage.goto(url);
+        const trackUrls = [];
         const table = await rootPage.$('#songlist');
         const trs = await table.$$('tr');
 
@@ -35,22 +37,22 @@ const config = require('./config/config.json');
 
             if (clickableRow) {
                 const hrefs = await clickableRow.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
-                urls.push('https://downloads.khinsider.com' + hrefs[0]);
+                trackUrls.push('https://downloads.khinsider.com' + hrefs[0]);
             }
         }
 
-        console.log('Track URLs:', urls.length);
-        fs.writeFileSync('./data/trackUrls.json', JSON.stringify(urls, null, 4));
+        console.log('Track URLs:', trackUrls.length);
+        fs.writeFileSync('./data/trackUrls.json', JSON.stringify(trackUrls, null, 4));
         await rootPage.close();
 
-        return urls;
+        return trackUrls;
     }
 
     /**
      * @param {[string]} trackUrls
-     * @param {[string]} allowedExtensions
+     * @param {[string]} extensions
      */
-    async function getDownloadLinks(trackUrls, allowedExtensions=['flac']) {
+    async function getDownloadLinks(trackUrls, extensions=['flac']) {
         const links = [];
 
         for (const url of trackUrls) {
@@ -60,7 +62,7 @@ const config = require('./config/config.json');
             const content = await page.$('#pageContent');
             const hrefs = await content.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
             const audios = hrefs.filter(e => {
-                for (const extension of allowedExtensions) {
+                for (const extension of extensions) {
                     if (e.endsWith(extension)) return true;
                 }
 
@@ -93,6 +95,28 @@ const config = require('./config/config.json');
             const filename = path[path.length-1];
 
             return decodeURIComponent(filename);
+        }
+    }
+
+    /**
+     * Extracts parameters.
+     * Loads config file as fallback, priority goes to the command line.
+     * 
+     * @param {*} args 
+     * @param {*} config 
+     * @returns {*}
+     */
+    function getParams(args, config) {
+        if (args.url && args.extensions) {
+            return {
+                url: args.url,
+                extensions: Array.isArray(args.extensions) ? args.extensions : [args.extensions],
+            }
+        }
+
+        return {
+            url: config.url,
+            extensions: config.extensions,
         }
     }
 })();

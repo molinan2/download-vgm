@@ -11,6 +11,7 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "download": "^8.0.0",
+    "minimist": "^1.2.8",
     "puppeteer": "^19.5.2"
   }
 }
