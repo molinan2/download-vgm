@@ -127,11 +127,16 @@ const args = minimist(process.argv);
                 url: args.url,
                 extensions: extensions,
             }
-        }
-
-        return {
-            url: config.url,
-            extensions: config.extensions,
+        } else if (args['_'][2]) {
+            return {
+                url: args['_'][2],
+                extensions: [],
+            }
+        } else {
+            return {
+                url: config.url,
+                extensions: config.extensions,
+            }
         }
     }
 })();

@@ -25,6 +25,7 @@ Alternatively, use the command line:
 
 ```sh
 node index.js --url https://downloads.khinsider.com/game-soundtracks/album/some-album --extensions "flac" --extensions "mp3"
+node index.js https://downloads.khinsider.com/game-soundtracks/album/some-album
 ```
 
 Run:
