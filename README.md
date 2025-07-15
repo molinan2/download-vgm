@@ -12,7 +12,7 @@ Install packages:
 npm i
 ```
 
-Create or edit the file at `config/config.json`. Add the `url` for the album you want to download and the `extensions` for the audio file types you want:
+Create or edit the file at `config/config.json`. Add the `url` for the album you want to download and, optionally, the `extensions` for the audio file types you want:
 
 ```json
 {
@@ -21,7 +21,7 @@ Create or edit the file at `config/config.json`. Add the `url` for the album you
 }
 ```
 
-Alternatively, use the command line to pass `url` and `extensions` as parameters:
+Alternatively, use the command line:
 
 ```sh
 node index.js --url https://downloads.khinsider.com/game-soundtracks/album/some-album --extensions "flac" --extensions "mp3"
