@@ -1,142 +1,185 @@
-const fs = require('fs');
+/**
+ * VGM Downloader (KHInsider)
+ *
+ * Script to download soundtracks from downloads.khinsider.com.
+ * It processes the album track by track, extracts download links,
+ * and saves the files locally in a folder inside ./downloads/.
+ *
+ * Usage:
+ *   node script.js --url <URL> [--format <format>]
+ *   node script.js -u <URL> [-f <format>]
+ *
+ * Parameters:
+ *   --url, -u       KHInsider album URL (required)
+ *   --format, -f    Download format: flac | mp3 | ogg (optional)
+ *                   Default: flac
+ *
+ * Examples:
+ *   node script.js --url https://downloads.khinsider.com/game-soundtrack/xxx
+ *   node script.js -u https://downloads.khinsider.com/game-soundtrack/xxx -f mp3
+ *
+ * Notes:
+ *   - The process is sequential (one track at a time) to avoid stressing the website.
+ *   - Only one format is downloaded per execution.
+ *   - Files are saved using the original filenames provided by the server.
+ */
 
-const puppeteer = require('puppeteer');
-const download = require('download');
-const chalk = require('chalk');
-const minimist = require('minimist');
+import fs from 'fs/promises';
+import path from 'path';
+import chalk from 'chalk';
+import { load } from 'cheerio';
 
-const config = require('./config/config.json');
-const args = minimist(process.argv);
+const BASE_URL = 'https://downloads.khinsider.com';
 
-(async function() {
-    const { url, extensions } = getParams(args, config);
-    const game = url.split('/').pop();
-    const downloadPath = `./downloads/${game}`;
-    fs.mkdirSync(downloadPath, { recursive: true });
-    console.log('Game:', chalk.green(game));
+async function fetchHtml(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+}
 
-    const browser = await puppeteer.launch({ headless: 'new' });
-    const trackUrls = await getTrackURLs(url);
-    const links = await getDownloadLinks(trackUrls, extensions);
-    await downloadLinks(links, downloadPath);
-    await browser.close();
+function extractFilename(url) {
+    return decodeURIComponent(url.split('/').pop());
+}
 
-    /**
-     * @param {string} url
-     */
-    async function getTrackURLs(url) {
-        const rootPage = await browser.newPage();
-        await rootPage.goto(url);
-        const trackUrls = [];
-        const table = await rootPage.$('#songlist');
-        const trs = await table.$$('tr');
+function parseArgs() {
+    const args = process.argv.slice(2);
 
-        for (const tr of trs) {
-            const clickableRows = await tr.$$('.clickable-row');
-            const clickableRow = clickableRows.length > 0 ? clickableRows[0] : null;
+    let url = null;
+    let format = 'flac';
 
-            if (clickableRow) {
-                const hrefs = await clickableRow.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
-                trackUrls.push('https://downloads.khinsider.com' + hrefs[0]);
-            }
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+
+        if (arg === '--url' || arg === '-u') {
+            url = args[i + 1];
+            i++;
         }
 
-        console.log('Track URLs:', trackUrls.length);
-        fs.writeFileSync(`./data/${game}_track-urls.json`, JSON.stringify(trackUrls, null, 4));
-        await rootPage.close();
-
-        return trackUrls;
+        if (arg === '--format' || arg === '-f') {
+            format = args[i + 1];
+            i++;
+        }
     }
 
-    /**
-     * @param {[string]} trackUrls
-     * @param {[string]} extensions
-     */
-    async function getDownloadLinks(trackUrls, extensions=[]) {
-        const links = [];
+    if (!url) {
+        console.log('Usage: node script.js --url <URL> [--format flac|mp3|ogg]');
+        process.exit(1);
+    }
 
-        for (const url of trackUrls) {
-            console.log('Track URL:', `.../${chalk.grey(url.split('/').pop())}`);
-            const page = await browser.newPage();
-            await page.goto(url);
-            const content = await page.$('#pageContent');
-            const hrefs = await content.$$eval('a', anchors => anchors.map(e => e.getAttribute('href')));
+    const allowed = ['flac', 'mp3', 'ogg'];
+    format = format.toLowerCase();
 
-            const containsFlac = !!(hrefs.find(e => e.toLowerCase().endsWith('flac')));
-            const containsMp3 = !!(hrefs.find(e => e.toLowerCase().endsWith('mp3')));
-            const containsOgg = !!(hrefs.find(e => e.toLowerCase().endsWith('ogg')));
-            
-            const audios = hrefs.filter(e => {
+    if (!allowed.includes(format)) {
+        console.log(`Invalid format: ${format}`);
+        console.log(`Allowed formats: ${allowed.join(', ')}`);
+        process.exit(1);
+    }
+
+    return {
+        url,
+        extensions: [`.${format}`]
+    };
+}
+
+async function getTrackURLs(albumUrl) {
+    const html = await fetchHtml(albumUrl);
+    const $ = load(html);
+
+    const trackUrls = [];
+
+    $('#songlist tr').each((_, el) => {
+        const link = $(el).find('.clickable-row a').attr('href');
+        if (link) {
+            trackUrls.push(BASE_URL + link);
+        }
+    });
+
+    console.log(`Tracks found: ${trackUrls.length}`);
+    return trackUrls;
+}
+
+async function getDownloadLinks(trackUrls, extensions = []) {
+    console.log('Resolving download links...');
+
+    const results = [];
+
+    for (const url of trackUrls) {
+        try {
+            console.log(chalk.gray(`${url.split('/').pop()}`));
+
+            const html = await fetchHtml(url);
+            const $ = load(html);
+
+            const links = [];
+
+            $('#pageContent a').each((_, el) => {
+                const href = $(el).attr('href');
+                if (!href) return;
+
+                const lower = href.toLowerCase();
+
                 if (extensions.length > 0) {
-                    for (const extension of extensions) {
-                        if (e.endsWith(extension)) return true;
+                    if (extensions.some(ext => lower.endsWith(ext))) {
+                        links.push(href);
                     }
-                    return false;
-                }
-                else {
-                    // Assumes the whole album is complete with every single extension (sometimes not true)
-                    if (containsFlac) return e.toLowerCase().endsWith('flac');
-                    else if (containsMp3) return e.toLowerCase().endsWith('mp3');
-                    else if (containsOgg) return e.toLowerCase().endsWith('ogg');
-                    else return false;
+                } else {
+                    if (
+                        lower.endsWith('.flac') ||
+                        lower.endsWith('.mp3') ||
+                        lower.endsWith('.ogg')
+                    ) {
+                        links.push(href);
+                    }
                 }
             });
-            links.push(...audios);
-            fs.writeFileSync(`./data/${game}_download-links.json`, JSON.stringify(links, null, 4));
-            await page.close();
-        }
 
-        console.log('Download links:', links.length);
-        fs.writeFileSync(`./data/${game}_download-links.json`, JSON.stringify(links, null, 4));
+            results.push(...links);
 
-        return links;
-    }
-
-    /**
-     * @param {[string]} links
-     * @param {string} downloadPath
-     */
-    async function downloadLinks(links, downloadPath='.') {
-        for (const link of links) {
-            const filename = extractFilename(link);
-            console.log('Downloading:', chalk.grey(filename));
-            fs.writeFileSync(`${downloadPath}/${filename}`, await download(link));
-        }
-
-        function extractFilename(link) {
-            const path = link.split('/');
-            const filename = path[path.length-1];
-
-            return decodeURIComponent(filename);
+        } catch (err) {
+            console.log(chalk.red(`✖ Failed: ${url}`));
         }
     }
 
-    /**
-     * Extracts parameters.
-     * Loads config file as fallback, priority goes to the command line.
-     * 
-     * @param {*} args 
-     * @param {*} config 
-     * @returns {*}
-     */
-    function getParams(args, config) {
-        if (args.url) {
-            const extensions = args.extensions ? (Array.isArray(args.extensions) ? args.extensions : [args.extensions]) : [];
+    return results;
+}
 
-            return {
-                url: args.url,
-                extensions: extensions,
-            }
-        } else if (args['_'][2]) {
-            return {
-                url: args['_'][2],
-                extensions: [],
-            }
-        } else {
-            return {
-                url: config.url,
-                extensions: config.extensions,
-            }
+async function downloadFiles(links, folder) {
+    console.log('Downloading...');
+
+    await fs.mkdir(folder, { recursive: true });
+
+    for (const link of links) {
+        const filename = extractFilename(link);
+        const filePath = path.join(folder, filename);
+
+        try {
+            console.log(chalk.gray(`${filename}`));
+
+            const res = await fetch(link);
+            if (!res.ok) throw new Error('Download failed');
+
+            const buffer = Buffer.from(await res.arrayBuffer());
+            await fs.writeFile(filePath, buffer);
+
+        } catch (err) {
+            console.log(chalk.red(`✖ ${filename}`));
         }
     }
-})();
+}
+
+async function main() {
+    const { url, extensions } = parseArgs();
+
+    const game = url.split('/').pop();
+    const folder = `./downloads/${game}`;
+
+    console.log(`Game: ${chalk.green(game)}`);
+
+    const trackUrls = await getTrackURLs(url);
+    const downloadLinks = await getDownloadLinks(trackUrls, extensions);
+    await downloadFiles(downloadLinks, folder);
+
+    console.log('Done');
+}
+
+main();

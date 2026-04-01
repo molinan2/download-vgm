@@ -1,10 +1,10 @@
 # About
 
-Downloads an album from [Video Game Music](https://downloads.khinsider.com). Only downloads tracks in *.flac or *.wav format and doesn't fall back to *.mp3. Downloads happen one by one to avoid overloading the server.
+Script to download soundtracks from [Video Game Music](https://downloads.khinsider.com). It processes the album track by track, extracts download links, and saves the files locally in a folder inside [downloads/](./downloads/). The process is sequential (one track at a time) to avoid stressing the website.
 
 # Usage
 
-Use Node 16.0.0 or higher.
+Use Node 24 or higher.
 
 Install packages:
 
@@ -12,26 +12,9 @@ Install packages:
 npm i
 ```
 
-Create or edit the file at `config/config.json`. Add the `url` for the album you want to download and, optionally, the `extensions` for the audio file types you want:
-
-```json
-{
-  "url": "https://downloads.khinsider.com/game-soundtracks/album/some-album",
-  "extensions": [ "flac", "mp3" ]
-}
-```
-
-Alternatively, use the command line:
-
-```sh
-node index.js --url https://downloads.khinsider.com/game-soundtracks/album/some-album --extensions "flac" --extensions "mp3"
-node index.js https://downloads.khinsider.com/game-soundtracks/album/some-album
-```
-
-Run:
+Run from command line:
 
 ```
-node index.js
+node script.js --url <URL> [--format <format>]
+node script.js -u <URL> [-f <format>]
 ```
-
-Downloads will be saved to the `/downloads` folder.
