@@ -6,17 +6,20 @@
  * and saves the files locally in a folder inside ./downloads/.
  *
  * Usage:
- *   node script.js --url <URL> [--format <format>]
- *   node script.js -u <URL> [-f <format>]
+ *   node index.js <URL> [--format <format>]
+ *   node index.js --url <URL> [--format <format>]
+ *   node index.js -u <URL> [-f <format>]
  *
  * Parameters:
- *   --url, -u       KHInsider album URL (required)
- *   --format, -f    Download format: flac | mp3 | ogg (optional)
- *                   Default: flac
+ *   URL             KHInsider album URL (required, can be positional)
+ *   --url, -u       KHInsider album URL
+ *   --format, -f    Download format: auto | flac | mp3 | ogg (optional)
+ *                   Default: auto
  *
  * Examples:
- *   node script.js --url https://downloads.khinsider.com/game-soundtrack/xxx
- *   node script.js -u https://downloads.khinsider.com/game-soundtrack/xxx -f mp3
+ *   node index.js https://downloads.khinsider.com/game-soundtrack/xxx
+ *   node index.js --url https://downloads.khinsider.com/game-soundtrack/xxx
+ *   node index.js -u https://downloads.khinsider.com/game-soundtrack/xxx -f mp3
  *
  * Notes:
  *   - The process is sequential (one track at a time) to avoid stressing the website.
@@ -26,26 +29,92 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import chalk from 'chalk';
 import { load } from 'cheerio';
 
 const BASE_URL = 'https://downloads.khinsider.com';
+const FORMAT_PRIORITY = ['flac', 'mp3', 'ogg'];
+const execFileAsync = promisify(execFile);
 
-async function fetchHtml(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
+function browserHeaders(referer = `${BASE_URL}/`) {
+    return [
+        'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language: en-US,en;q=0.9,es;q=0.8',
+        `Referer: ${referer}`
+    ];
+}
+
+async function curl(args) {
+    try {
+        return await execFileAsync('curl', args, { maxBuffer: 30 * 1024 * 1024 });
+    } catch (err) {
+        const details = err.stderr || err.stdout || err.message;
+        throw new Error(details.trim());
+    }
+}
+
+function toAbsoluteUrl(href, baseUrl = BASE_URL) {
+    return new URL(href, baseUrl).toString();
+}
+
+async function fetchHtml(url, referer) {
+    const args = [
+        '--fail',
+        '--location',
+        '--silent',
+        '--show-error',
+        '--http1.1',
+        '--compressed'
+    ];
+
+    for (const header of browserHeaders(referer)) {
+        args.push('--header', header);
+    }
+
+    args.push(url);
+
+    const { stdout } = await curl(args);
+    return stdout;
 }
 
 function extractFilename(url) {
     return decodeURIComponent(url.split('/').pop());
 }
 
+function getDownloadExtension(url) {
+    const { pathname } = new URL(url);
+    const extension = path.extname(pathname).slice(1).toLowerCase();
+    return extension || null;
+}
+
+function getUsage() {
+    return 'Usage: node index.js <URL> [--format auto|flac|mp3|ogg]';
+}
+
+function sortFormats(formats) {
+    return [...formats].sort((a, b) => {
+        const aIndex = FORMAT_PRIORITY.indexOf(a);
+        const bIndex = FORMAT_PRIORITY.indexOf(b);
+
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+        return a.localeCompare(b);
+    });
+}
+
+function formatList(links) {
+    return sortFormats(new Set(links.map(link => link.extension))).join(', ');
+}
+
 function parseArgs() {
     const args = process.argv.slice(2);
 
     let url = null;
-    let format = 'flac';
+    let format = 'auto';
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -59,14 +128,18 @@ function parseArgs() {
             format = args[i + 1];
             i++;
         }
+
+        if (!arg.startsWith('-') && !url) {
+            url = arg;
+        }
     }
 
     if (!url) {
-        console.log('Usage: node script.js --url <URL> [--format flac|mp3|ogg]');
+        console.log(getUsage());
         process.exit(1);
     }
 
-    const allowed = ['flac', 'mp3', 'ogg'];
+    const allowed = ['auto', ...FORMAT_PRIORITY];
     format = format.toLowerCase();
 
     if (!allowed.includes(format)) {
@@ -77,7 +150,7 @@ function parseArgs() {
 
     return {
         url,
-        extensions: [`.${format}`]
+        format
     };
 }
 
@@ -85,20 +158,20 @@ async function getTrackURLs(albumUrl) {
     const html = await fetchHtml(albumUrl);
     const $ = load(html);
 
-    const trackUrls = [];
+    const trackUrls = new Set();
 
     $('#songlist tr').each((_, el) => {
         const link = $(el).find('.clickable-row a').attr('href');
         if (link) {
-            trackUrls.push(BASE_URL + link);
+            trackUrls.add(toAbsoluteUrl(link));
         }
     });
 
-    console.log(`Tracks found: ${trackUrls.length}`);
-    return trackUrls;
+    console.log(`Tracks found: ${trackUrls.size}`);
+    return [...trackUrls];
 }
 
-async function getDownloadLinks(trackUrls, extensions = []) {
+async function getDownloadLinks(trackUrls) {
     console.log('Resolving download links...');
 
     const results = [];
@@ -107,7 +180,7 @@ async function getDownloadLinks(trackUrls, extensions = []) {
         try {
             console.log(chalk.gray(`${url.split('/').pop()}`));
 
-            const html = await fetchHtml(url);
+            const html = await fetchHtml(url, url);
             const $ = load(html);
 
             const links = [];
@@ -116,21 +189,9 @@ async function getDownloadLinks(trackUrls, extensions = []) {
                 const href = $(el).attr('href');
                 if (!href) return;
 
-                const lower = href.toLowerCase();
-
-                if (extensions.length > 0) {
-                    if (extensions.some(ext => lower.endsWith(ext))) {
-                        links.push(href);
-                    }
-                } else {
-                    if (
-                        lower.endsWith('.flac') ||
-                        lower.endsWith('.mp3') ||
-                        lower.endsWith('.ogg')
-                    ) {
-                        links.push(href);
-                    }
-                }
+                const downloadUrl = toAbsoluteUrl(href, url);
+                const extension = getDownloadExtension(downloadUrl);
+                if (extension) links.push({ url: downloadUrl, referer: url, extension });
             });
 
             results.push(...links);
@@ -143,40 +204,94 @@ async function getDownloadLinks(trackUrls, extensions = []) {
     return results;
 }
 
+function selectFormat(links, requestedFormat) {
+    if (requestedFormat !== 'auto') {
+        return {
+            format: requestedFormat,
+            links: links.filter(link => link.extension === requestedFormat)
+        };
+    }
+
+    const availableFormats = new Set(links.map(link => link.extension));
+    const preferredFormat = FORMAT_PRIORITY.find(format => availableFormats.has(format));
+    const selectedFormat = preferredFormat || [...availableFormats][0] || null;
+
+    return {
+        format: selectedFormat,
+        links: selectedFormat ? links.filter(link => link.extension === selectedFormat) : []
+    };
+}
+
 async function downloadFiles(links, folder) {
     console.log('Downloading...');
 
     await fs.mkdir(folder, { recursive: true });
 
-    for (const link of links) {
+    for (const { url, referer } of links) {
+        const link = url;
         const filename = extractFilename(link);
         const filePath = path.join(folder, filename);
+        const tempPath = `${filePath}.part`;
 
         try {
             console.log(chalk.gray(`${filename}`));
 
-            const res = await fetch(link);
-            if (!res.ok) throw new Error('Download failed');
+            const args = [
+                '--fail',
+                '--location',
+                '--silent',
+                '--show-error',
+                '--http1.1',
+                '--compressed',
+                '--output',
+                tempPath
+            ];
 
-            const buffer = Buffer.from(await res.arrayBuffer());
-            await fs.writeFile(filePath, buffer);
+            for (const header of browserHeaders(referer)) {
+                args.push('--header', header);
+            }
+
+            args.push(link);
+
+            await curl(args);
+            await fs.rename(tempPath, filePath);
 
         } catch (err) {
+            await fs.rm(tempPath, { force: true });
             console.log(chalk.red(`✖ ${filename}`));
         }
     }
 }
 
 async function main() {
-    const { url, extensions } = parseArgs();
+    const { url, format } = parseArgs();
 
     const game = url.split('/').pop();
     const folder = `./downloads/${game}`;
 
     console.log(`Game: ${chalk.green(game)}`);
+    console.log(`Format: ${chalk.green(format)}`);
 
     const trackUrls = await getTrackURLs(url);
-    const downloadLinks = await getDownloadLinks(trackUrls, extensions);
+    const allDownloadLinks = await getDownloadLinks(trackUrls);
+    const { format: selectedFormat, links: downloadLinks } = selectFormat(allDownloadLinks, format);
+
+    if (format === 'auto' && selectedFormat) {
+        console.log(`Selected format: ${chalk.green(selectedFormat)} (available: ${formatList(allDownloadLinks)})`);
+    }
+
+    if (downloadLinks.length === 0) {
+        const requestedLabel = format === 'auto' ? 'download' : format.toUpperCase();
+        console.log(chalk.red(`No ${requestedLabel} links found.`));
+
+        if (allDownloadLinks.length > 0) {
+            console.log(`Available formats: ${formatList(allDownloadLinks)}`);
+        }
+
+        process.exit(1);
+    }
+
+    console.log(`Download links found: ${downloadLinks.length}`);
     await downloadFiles(downloadLinks, folder);
 
     console.log('Done');
